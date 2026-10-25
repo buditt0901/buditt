@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#070b11" />
+  <title>VECTOR-04 · 四轮扭矩与摩擦演示</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <div id="viewport">
+    <canvas id="scene" aria-label="四轮机器人三维演示场景"></canvas>
+  </div>
+
+  <div class="screen-vignette" aria-hidden="true"></div>
+  <div class="screen-scanlines" aria-hidden="true"></div>
+
+  <div class="ui-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span><i></i><b></b></div>
+        <div class="brand-copy">
+          <h1>VECTOR<span>04</span></h1>
+          <p>四轮独立扭矩 · 轮胎摩擦物理演示</p>
+        </div>
+      </div>
+
+      <div class="top-center">
+        <div class="status-pill" id="tractionStatus">
+          <i></i><span id="statusText">系统待命</span>
+        </div>
+        <div class="sim-chip optional">SIM <b>480</b> Hz</div>
+        <div class="sim-chip optional">4WD <b>TORQUE</b></div>
+        <div class="sim-chip perf-chip" id="perfChip" title="实时帧率 / 帧时间">
+          <i class="perf-dot"></i><span>FPS</span><b id="fpsValue">--</b><span class="perf-ms" id="frameMs">--</span><span class="perf-state" id="perfState">稳</span>
+        </div>
+        <div class="tire-picker" id="tirePicker" title="选择轮胎配方">
+          <i class="tire-dot" id="tireDot"></i><span>TIRE</span>
+          <select id="tireSelect" aria-label="轮胎配方"></select>
+        </div>
+        <div class="tire-picker env-picker" id="envPicker" title="选择环境">
+          <i class="tire-dot" id="envDot"></i><span>ENV</span>
+          <select id="envSelect" aria-label="环境"></select>
+        </div>
+        <button id="autoDemo" class="auto-btn" type="button">
+          <span class="play-icon" aria-hidden="true"></span>
+          <span>自动演示</span>
+        </button>
+      </div>
+
+      <div class="speed-hero">
+        <span class="eyebrow">GROUND SPEED</span>
+        <div><strong id="speedTop">0.0</strong><em>km/h</em></div>
+      </div>
+    </header>
+
+    <aside class="panel left-panel" aria-label="扭矩控制面板">
+      <button class="panel-collapse panel-collapse-left" id="leftCollapse" type="button" aria-controls="leftPanelScroll" aria-expanded="true" title="收起左侧控制栏（[）"><span>‹</span></button>
+      <div class="panel-rail" id="leftRail" aria-hidden="true"><span>TORQUE</span><b>扭矩</b><i></i></div>
+      <div class="panel-scroll" id="leftPanelScroll">
+        <section class="block">
+          <div class="section-title">
+            <span><b>01</b> 扭矩控制</span>
+            <em>TORQUE VECTORING</em>
+          </div>
+          <div class="preset-grid" id="presetGrid">
+            <button type="button" class="preset-btn" data-preset="forward"><i>↑</i><span>直行</span></button>
+            <button type="button" class="preset-btn" data-preset="reverse"><i>↓</i><span>倒车</span></button>
+            <button type="button" class="preset-btn" data-preset="left"><i>↰</i><span>左转</span></button>
+            <button type="button" class="preset-btn" data-preset="right"><i>↱</i><span>右转</span></button>
+            <button type="button" class="preset-btn" data-preset="spinLeft"><i>⟲</i><span>左旋</span></button>
+            <button type="button" class="preset-btn" data-preset="spinRight"><i>⟳</i><span>右旋</span></button>
+            <button type="button" class="preset-btn preset-hot" data-preset="full"><i>⚡</i><span>全扭矩</span></button>
+            <button type="button" class="preset-btn" data-preset="stop"><i>■</i><span>停车</span></button>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="section-title">
+            <span><b>02</b> 单轮指令</span>
+            <em>±16 N·m · DIRECT DRIVE</em>
+          </div>
+          <div class="wheel-list" id="wheelCards"></div>
+          <p class="micro-hint">滑块给定轮端扭矩；实际扭矩受电机外特性、响应时间和轮胎反作用限制。</p>
+        </section>
+
+        <section class="block vector-block">
+          <div class="section-title">
+            <span><b>03</b> 扭矩矢量</span>
+            <em>YAW MOMENT / TOP VIEW</em>
+          </div>
+          <canvas id="vectorCanvas" width="600" height="260" aria-label="四轮扭矩矢量图"></canvas>
+        </section>
+
+        <div class="compact-note">
+          <b>扭矩链 / TORQUE PATH</b>
+          <p>τ_cmd → 电机响应 → 车轮角加速度 → 滑移率 → 轮胎力</p>
+          <p>地面 μ 降低时，μN 上限先饱和；多余的扭矩只会让车轮空转。</p>
+        </div>
+      </div>
+      <span class="panel-tag">TORQUE / 01</span>
+    </aside>
+
+    <aside class="panel right-panel" aria-label="地面与轮胎状态面板">
+      <button class="panel-collapse panel-collapse-right" id="rightCollapse" type="button" aria-controls="rightPanelScroll" aria-expanded="true" title="收起右侧控制栏（]）"><span>›</span></button>
+      <div class="panel-rail" id="rightRail" aria-hidden="true"><span>TRACTION</span><b>地面</b><i></i></div>
+      <div class="panel-scroll" id="rightPanelScroll">
+        <section class="block">
+          <div class="section-title">
+            <span><b>04</b> 地面附着</span>
+            <em>SURFACE FRICTION</em>
+          </div>
+          <div class="surface-grid" id="surfaceGrid">
+            <button type="button" class="surface-btn is-active" data-surface="dry" data-mu="0.95"><b>干沥青</b><span>μ 0.95</span></button>
+            <button type="button" class="surface-btn" data-surface="wet" data-mu="0.62"><b>湿沥青</b><span>μ 0.62</span></button>
+            <button type="button" class="surface-btn" data-surface="gravel" data-mu="0.48"><b>砂石</b><span>μ 0.48</span></button>
+            <button type="button" class="surface-btn" data-surface="ice" data-mu="0.16"><b>冰雪</b><span>μ 0.16</span></button>
+          </div>
+          <div class="range-head">
+            <span>摩擦系数 <b>μ</b></span>
+            <output id="muValue">0.95</output>
+          </div>
+          <input id="muSlider" class="mu-slider" type="range" min="0.08" max="1.20" step="0.01" value="0.95" aria-label="地面摩擦系数" />
+          <div class="grip-readout">
+            <span>整车附着上限 <b>μmg</b><i id="tireFactor">×1.00</i></span>
+            <strong id="totalGrip">466 N</strong>
+          </div>
+        </section>
+
+        <section class="block tire-block">
+          <div class="section-title">
+            <span><b>05</b> 轮胎工作点</span>
+            <em id="selectedWheelTitle">FL · FRONT LEFT</em>
+          </div>
+          <div class="friction-wrap">
+            <canvas id="frictionCanvas" width="600" height="600" aria-label="轮胎摩擦圆"></canvas>
+            <div class="friction-legend">
+              <span><i class="dot dot-long"></i>纵向力 Fx</span>
+              <span><i class="dot dot-lat"></i>侧向力 Fy</span>
+            </div>
+          </div>
+          <div class="tire-readouts">
+            <div><span>滑移率</span><b id="tireSlip">0.0%</b></div>
+            <div><span>侧偏角</span><b id="tireAlpha">0.0°</b></div>
+            <div><span>垂向载荷</span><b id="tireLoad">0 N</b></div>
+            <div><span>附着利用率</span><b id="tireUtil">0%</b></div>
+          </div>
+        </section>
+
+        <section class="block telemetry-block">
+          <div class="section-title">
+            <span><b>06</b> 实时遥测</span>
+            <em>TELEMETRY</em>
+          </div>
+          <div class="telemetry-grid">
+            <div class="stat"><span>纵向加速度</span><b id="longG">0.00<em>g</em></b></div>
+            <div class="stat"><span>侧向加速度</span><b id="latG">0.00<em>g</em></b></div>
+            <div class="stat"><span>横摆角速度</span><b id="yawRate">0.0<em>°/s</em></b></div>
+            <div class="stat"><span>轮端总功率</span><b id="power">0.0<em>kW</em></b></div>
+            <div class="stat stat-wide"><span>四轮扭矩合计</span><b id="totalTorque">0.0<em>N·m</em></b></div>
+            <div class="stat stat-wide"><span>当前纵向牵引力</span><b id="tractionForce">0<em>N</em></b></div>
+          </div>
+        </section>
+      </div>
+      <span class="panel-tag">TRACTION / 02</span>
+    </aside>
+
+    <div class="stage-tools" aria-label="视角与显示选项">
+      <span class="tool-title">VIEW</span>
+      <button type="button" class="view-btn is-active" data-view="orbit">斜视</button>
+      <button type="button" class="view-btn" data-view="chase">车尾</button>
+      <button type="button" class="view-btn" data-view="top">俯视</button>
+      <span class="tool-sep"></span>
+      <button type="button" class="toggle is-active" data-toggle="forces"><i></i>力矢量</button>
+      <button type="button" class="toggle is-active" data-toggle="marks"><i></i>胎痕</button>
+      <button type="button" class="toggle" data-toggle="slow"><i></i>慢动作</button>
+      <button type="button" class="toggle" data-toggle="orbit"><i></i>环绕</button>
+    </div>
+
+    <div class="bottom-hint">
+      <span><kbd>W</kbd><kbd>S</kbd> 前进 / 倒车</span>
+      <span><kbd>A</kbd><kbd>D</kbd> 差速转向</span>
+      <span><kbd>SPACE</kbd> 停止</span>
+      <span><kbd>[</kbd><kbd>]</kbd> 收起面板</span>
+      <span class="hint-divider"></span>
+      <span>拖拽环绕 · 滚轮缩放</span>
+    </div>
+
+    <div id="demoCaption" class="demo-caption" hidden>
+      <div class="demo-caption-top"><span>AUTO DEMO</span><b id="demoStep">01 / 06</b></div>
+      <p id="demoText">四轮等扭矩：直线加速</p>
+      <div class="demo-progress"><i id="demoProgress"></i></div>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+
+    <div id="webglError" class="webgl-error" hidden>
+      <b>无法启动 WebGL</b>
+      <p>请使用较新的 Edge / Chrome 浏览器，并确认已开启硬件加速。</p>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="loader-rig" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="loading-copy">
+        <b>INITIALIZING TRACTION MODEL</b>
+        <p>建立四轮接触模型 · 480 Hz</p>
+      </div>
+    </div>
+  </div>
+
+  <noscript>这个演示需要启用 JavaScript。</noscript>
+  <script src="./vendor/three.min.js"></script>
+  <script src="./js/physics.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
